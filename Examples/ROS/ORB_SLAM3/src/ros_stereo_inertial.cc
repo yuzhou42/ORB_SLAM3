@@ -116,7 +116,7 @@ int main(int argc, char **argv)
             return -1;
         }
 
-        cv::Mat K_l, K_r, P_l, P_r, R_l, R_r, D_l, D_r;
+        cv::Mat K_l, K_r, P_l, P_r, R_l, R_r, D_l, D_r, T10;
         fsSettings["LEFT.K"] >> K_l;
         fsSettings["RIGHT.K"] >> K_r;
 
@@ -129,6 +129,9 @@ int main(int argc, char **argv)
         fsSettings["LEFT.D"] >> D_l;
         fsSettings["RIGHT.D"] >> D_r;
 
+        // add stereoRectify to get R1, R2, P1, P2
+        fsSettings["T10"] >> T10;
+
         int rows_l = fsSettings["LEFT.height"];
         int cols_l = fsSettings["LEFT.width"];
         int rows_r = fsSettings["RIGHT.height"];
@@ -140,13 +143,21 @@ int main(int argc, char **argv)
             cerr << "ERROR: Calibration parameters to rectify stereo are missing!" << endl;
             return -1;
         }
-
+        cv::Mat R1, R2, P1, P2, Q;
+        cv::stereoRectify(K_l, D_l, K_r, D_r, cv::Size(cols_l,rows_l),T10.rowRange(0,3).colRange(0,3),T10.rowRange(0,3).colRange(3,4),R1,R2,P1,P2,Q);
+        std::cout<<"R: " << endl<<T10.rowRange(0,3).colRange(0,3)<<std::endl;
+        std::cout<<"T: " << endl<<T10.rowRange(0,3).colRange(3,4)<<std::endl;
+        
+        std::cout<<"R1: " << endl<<R1<<std::endl;
+        std::cout<<"R2: " << endl<<R2<<std::endl;
+        std::cout<<"P1: " << endl<<P1<<std::endl;
+        std::cout<<"P2: " << endl<<P2<<std::endl;
         cv::initUndistortRectifyMap(K_l,D_l,R_l,P_l.rowRange(0,3).colRange(0,3),cv::Size(cols_l,rows_l),CV_32F,igb.M1l,igb.M2l);
         cv::initUndistortRectifyMap(K_r,D_r,R_r,P_r.rowRange(0,3).colRange(0,3),cv::Size(cols_r,rows_r),CV_32F,igb.M1r,igb.M2r);
     }
 
   // Maximum delay, 5 seconds
-  ros::Subscriber sub_imu = n.subscribe("/zed2/zed_node/imu/data", 10, &ImuGrabber::GrabImu, &imugb); 
+  ros::Subscriber sub_imu = n.subscribe("/imu", 10, &ImuGrabber::GrabImu, &imugb); 
   ros::Subscriber sub_img_left = n.subscribe("/zed2/zed_node/left_raw/image_raw_color", 5, &ImageGrabber::GrabImageLeft,&igb);
   ros::Subscriber sub_img_right = n.subscribe("/zed2/zed_node/right_raw/image_raw_color", 5, &ImageGrabber::GrabImageRight,&igb);
   pose_pub = n.advertise<geometry_msgs::PoseStamped>("/orb3_pose", 10);
