@@ -28,14 +28,24 @@
 #include<ros/ros.h>
 #include<cv_bridge/cv_bridge.h>
 #include<sensor_msgs/Imu.h>
-
+#include<geometry_msgs/PoseStamped.h>
+#include<tf/transform_broadcaster.h>
+#include "Converter.h"
 #include<opencv2/core/core.hpp>
 
 #include"../../../include/System.h"
 #include"../include/ImuTypes.h"
+#include <ctime>
+std::string get_timestamp()
+{
+    auto now = std::time(nullptr);
+    char buf[sizeof("YYYY-MM-DD HH-MM-SS")];
+    return std::string(buf,buf + 
+        std::strftime(buf,sizeof(buf),"%F_%T",std::gmtime(&now)));
+}
 
 using namespace std;
-
+ros::Publisher pose_pub;
 class ImuGrabber
 {
 public:
@@ -77,20 +87,17 @@ int main(int argc, char **argv)
   ros::NodeHandle n("~");
   ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Info);
   bool bEqual = false;
-  if(argc < 4 || argc > 5)
+  if(argc != 6)
   {
-    cerr << endl << "Usage: rosrun ORB_SLAM3 Stereo_Inertial path_to_vocabulary path_to_settings do_rectify [do_equalize]" << endl;
+    cerr << endl << "Usage: rosrun ORB_SLAM3 Stereo_Inertial path_to_vocabulary path_to_settings do_rectify do_equalize path_to_save_traj" << endl;
     ros::shutdown();
     return 1;
   }
 
   std::string sbRect(argv[3]);
-  if(argc==5)
-  {
-    std::string sbEqual(argv[4]);
-    if(sbEqual == "true")
-      bEqual = true;
-  }
+  std::string sbEqual(argv[4]);
+  if(sbEqual == "true")
+    bEqual = true;
 
   // Create SLAM system. It initializes all system threads and gets ready to process frames.
   ORB_SLAM3::System SLAM(argv[1],argv[2],ORB_SLAM3::System::IMU_STEREO,true);
@@ -100,6 +107,7 @@ int main(int argc, char **argv)
   
     if(igb.do_rectify)
     {      
+        std::cout<<"~~~~do rectify~~~~~~~~~~"<<std::endl;
         // Load settings related to stereo calibration
         cv::FileStorage fsSettings(argv[2], cv::FileStorage::READ);
         if(!fsSettings.isOpened())
@@ -138,13 +146,25 @@ int main(int argc, char **argv)
     }
 
   // Maximum delay, 5 seconds
-  ros::Subscriber sub_imu = n.subscribe("/imu", 1000, &ImuGrabber::GrabImu, &imugb); 
-  ros::Subscriber sub_img_left = n.subscribe("/camera/left/image_raw", 100, &ImageGrabber::GrabImageLeft,&igb);
-  ros::Subscriber sub_img_right = n.subscribe("/camera/right/image_raw", 100, &ImageGrabber::GrabImageRight,&igb);
-
-  std::thread sync_thread(&ImageGrabber::SyncWithImu,&igb);
+  ros::Subscriber sub_imu = n.subscribe("/zed2/zed_node/imu/data", 10, &ImuGrabber::GrabImu, &imugb); 
+  ros::Subscriber sub_img_left = n.subscribe("/zed2/zed_node/left_raw/image_raw_color", 5, &ImageGrabber::GrabImageLeft,&igb);
+  ros::Subscriber sub_img_right = n.subscribe("/zed2/zed_node/right_raw/image_raw_color", 5, &ImageGrabber::GrabImageRight,&igb);
+  pose_pub = n.advertise<geometry_msgs::PoseStamped>("/orb3_pose", 10);
+  std::thread sync_thread(&ImageGrabber::SyncWithImu , &igb);
 
   ros::spin();
+  // Stop all threads
+  SLAM.Shutdown();
+
+  // Save camera trajectory
+  string t = get_timestamp();
+  string folder = argv[5];
+  string traj_path = folder+"/KeyFrameTrajTUMStereoInertial_"+t+".txt";
+  SLAM.SaveKeyFrameTrajectoryTUM(traj_path);
+  SLAM.SaveTrajectoryTUM(folder+"/FrameTrajTUMStereoInertial_"+t+".txt");
+  SLAM.SaveTrajectoryKITTI(folder+"/FrameTrajKITTIStereoInertial_"+t+".txt");
+
+  ros::shutdown();
 
   return 0;
 }
@@ -267,7 +287,27 @@ void ImageGrabber::SyncWithImu()
         cv::remap(imRight,imRight,M1r,M2r,cv::INTER_LINEAR);
       }
 
-      mpSLAM->TrackStereo(imLeft,imRight,tImLeft,vImuMeas);
+      cv::Mat Tcw = mpSLAM->TrackStereo(imLeft,imRight,tImLeft,vImuMeas);
+      geometry_msgs::PoseStamped pose;
+      pose.header.stamp = ros::Time::now();
+      pose.header.frame_id ="map";
+
+      if(!Tcw.empty()){
+        cv::Mat Rwc = Tcw.rowRange(0,3).colRange(0,3).t(); // Rotation information
+        cv::Mat twc = -Rwc*Tcw.rowRange(0,3).col(3); // translation information
+        vector<float> q = ORB_SLAM3::Converter::toQuaternion(Rwc);
+
+        tf::Transform new_transform;
+        new_transform.setOrigin(tf::Vector3(twc.at<float>(0, 0), twc.at<float>(0, 1), twc.at<float>(0, 2)));
+
+        tf::Quaternion quaternion(q[0], q[1], q[2], q[3]);
+        new_transform.setRotation(quaternion);
+
+        tf::poseTFToMsg(new_transform, pose.pose);
+        pose_pub.publish(pose);
+
+
+      }
 
       std::chrono::milliseconds tSleep(1);
       std::this_thread::sleep_for(tSleep);

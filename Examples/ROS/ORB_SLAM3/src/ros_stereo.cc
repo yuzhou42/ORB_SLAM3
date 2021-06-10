@@ -31,7 +31,14 @@
 #include<opencv2/core/core.hpp>
 
 #include"../../../include/System.h"
-
+#include <ctime>
+std::string get_timestamp()
+{
+    auto now = std::time(nullptr);
+    char buf[sizeof("YYYY-MM-DD HH-MM-SS")];
+    return std::string(buf,buf + 
+        std::strftime(buf,sizeof(buf),"%F_%T",std::gmtime(&now)));
+}
 using namespace std;
 
 class ImageGrabber
@@ -48,12 +55,12 @@ public:
 
 int main(int argc, char **argv)
 {
-    ros::init(argc, argv, "RGBD");
+    ros::init(argc, argv, "Stereo");
     ros::start();
 
-    if(argc != 4)
+    if(argc != 5)
     {
-        cerr << endl << "Usage: rosrun ORB_SLAM3 Stereo path_to_vocabulary path_to_settings do_rectify" << endl;
+        cerr << endl << "Usage: rosrun ORB_SLAM3 Stereo path_to_vocabulary path_to_settings do_rectify path_to_save_traj" << endl;
         ros::shutdown();
         return 1;
     }    
@@ -107,8 +114,8 @@ int main(int argc, char **argv)
 
     ros::NodeHandle nh;
 
-    message_filters::Subscriber<sensor_msgs::Image> left_sub(nh, "/camera/left/image_raw", 1);
-    message_filters::Subscriber<sensor_msgs::Image> right_sub(nh, "/camera/right/image_raw", 1);
+    message_filters::Subscriber<sensor_msgs::Image> left_sub(nh, "/zed2/zed_node/left_raw/image_raw_color", 3);
+    message_filters::Subscriber<sensor_msgs::Image> right_sub(nh, "/zed2/zed_node/right_raw/image_raw_color", 3);
     typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image> sync_pol;
     message_filters::Synchronizer<sync_pol> sync(sync_pol(10), left_sub,right_sub);
     sync.registerCallback(boost::bind(&ImageGrabber::GrabStereo,&igb,_1,_2));
@@ -119,10 +126,11 @@ int main(int argc, char **argv)
     SLAM.Shutdown();
 
     // Save camera trajectory
-    SLAM.SaveKeyFrameTrajectoryTUM("KeyFrameTrajectory_TUM_Format.txt");
-    SLAM.SaveTrajectoryTUM("FrameTrajectory_TUM_Format.txt");
-    SLAM.SaveTrajectoryKITTI("FrameTrajectory_KITTI_Format.txt");
-
+    string folder = argv[4];
+    string t = get_timestamp();
+    SLAM.SaveKeyFrameTrajectoryTUM(folder+"/KeyFrameTrajTUMStereo_"+t+".txt");
+    SLAM.SaveTrajectoryTUM(folder+"/FrameTrajTUMStereo_"+t+".txt");
+    SLAM.SaveTrajectoryKITTI(folder+"/FrameTrajKITTIStereo_"+t+".txt");
     ros::shutdown();
 
     return 0;
