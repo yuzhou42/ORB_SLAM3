@@ -512,6 +512,8 @@ void KeyFrame::UpdateConnections(bool upParent)
 void KeyFrame::AddChild(KeyFrame *pKF)
 {
     unique_lock<mutex> lockCon(mMutexConnections);
+    if (this == pKF || mspChildrens.count(pKF)>0 || pKF == NULL)
+    return;
     mspChildrens.insert(pKF);
 }
 
@@ -532,7 +534,8 @@ void KeyFrame::ChangeParent(KeyFrame *pKF)
     }
 
     mpParent = pKF;
-    pKF->AddChild(this);
+    if(pKF != NULL)
+        pKF->AddChild(this);
 }
 
 set<KeyFrame*> KeyFrame::GetChilds()
@@ -686,7 +689,8 @@ void KeyFrame::SetBadFlag()
 
             if(bContinue)
             {
-                pC->ChangeParent(pP);
+                if(pC == pP) pC->ChangeParent(NULL);
+                else pC->ChangeParent(pP);
                 sParentCandidates.insert(pC);
                 mspChildrens.erase(pC);
             }
@@ -699,7 +703,8 @@ void KeyFrame::SetBadFlag()
         {
             for(set<KeyFrame*>::iterator sit=mspChildrens.begin(); sit!=mspChildrens.end(); sit++)
             {
-                (*sit)->ChangeParent(mpParent);
+                if((*sit) == mpParent) (*sit)->ChangeParent(NULL);
+                else (*sit)->ChangeParent(mpParent);
             }
         }
 
@@ -707,9 +712,9 @@ void KeyFrame::SetBadFlag()
             mpParent->EraseChild(this);
             mTcp = Tcw*mpParent->GetPoseInverse();
         }
+        // if((void *)mpParent!=(void *)this)
         mbBad = true;
     }
-
 
     mpMap->EraseKeyFrame(this);
     mpKeyFrameDB->erase(this);
