@@ -28,7 +28,7 @@ Camera.bf: 32.90621326593133
 # Color order of the images (0: BGR, 1: RGB. It is ignored if images are grayscale)
 Camera.RGB: 0
 
-# Close/Far threshold. Baseline times.
+# Close/Far threshold. Baseline times: mbf*mThDepth/fx, around 4.7m
 ThDepth: 40.0
 
 # Transformation from camera 0 to body-frame (imu)
@@ -55,15 +55,26 @@ T10: !!opencv-matrix
              0.        ,  0.        ,  0.        ,  1.        
          ]
 
+Tlr: !!opencv-matrix
+   rows: 4
+   cols: 4
+   dt: d
+   data: [
+            9.9999377e-01, -7.6636000e-04, -3.4463500e-03, 0.11938543,
+            7.7045000e-04,  9.9999900e-01,  1.1855600e-03, 0.00023611,
+            3.4454400e-03, -1.1882100e-03,  9.9999336e-01, -0.00018599,
+            0.0,           0.0,             0.0,           1.0
+         ]
+
 # IMU noise
-IMU.NoiseGyro: 8.6e-05
-IMU.NoiseAcc: 0.0014 
-IMU.GyroWalk: 2.2e-06
-IMU.AccWalk: 8.0e-05
-# IMU.NoiseGyro: 0.001
-# IMU.NoiseAcc: 0.01
-# IMU.GyroWalk: 0.0001
-# IMU.AccWalk: 0.001
+# IMU.NoiseGyro: 8.6e-05
+# IMU.NoiseAcc: 0.0014 
+# IMU.GyroWalk: 2.2e-06
+# IMU.AccWalk: 8.0e-05
+IMU.NoiseGyro: 0.001
+IMU.NoiseAcc: 0.01
+IMU.GyroWalk: 0.0001
+IMU.AccWalk: 0.001
 
 IMU.Frequency: 300
 
